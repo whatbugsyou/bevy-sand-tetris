@@ -145,15 +145,14 @@ pub fn input_system(
         }
         if locked_any {
             board_dirty.0 = true;
-            // Piece was placed: now consume its queue slot and replenish.
+            // Piece was placed: replenish only its original queue slot.
             if let Some(slot) = active_slot {
-                if slot < piece_queue.pieces.len() {
-                    piece_queue.pieces.remove(slot);
+                if let Some(entry) = piece_queue.pieces.get_mut(slot) {
                     let mut rng = rand::rng();
-                    piece_queue.pieces.push_back((
+                    *entry = (
                         TetrominoShape::random(&mut rng),
                         GrainColor::random(&mut rng),
-                    ));
+                    );
                 }
             }
         }
