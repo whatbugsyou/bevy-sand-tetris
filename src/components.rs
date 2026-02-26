@@ -8,8 +8,14 @@ pub struct Grain {
     pub stable: bool, // true if grain cannot move (has support below and blocked diagonals)
 }
 
-#[derive(Component)]
-pub struct ActivePiece;
+/// Marks grains belonging to the currently falling (active) piece.
+/// Stores the originating queue slot so it can be consumed when the piece
+/// is actually placed.
+#[derive(Component, Clone, Copy)]
+pub struct ActivePiece {
+    /// Queue slot index this piece came from; consumed on hard-drop.
+    pub slot: usize,
+}
 
 /// Marker component for ghost (preview) grains showing where the active piece will land.
 #[derive(Component)]

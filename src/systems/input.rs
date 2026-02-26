@@ -1,6 +1,7 @@
 use crate::components::{ActivePiece, Grain};
 use crate::constants::*;
-use crate::resources::{BoardDirty, BoardGrid, GameStatus};
+use crate::resources::{BoardDirty, BoardGrid, GameStatus, NextPieceQueue};
+use crate::types::{GrainColor, TetrominoShape};
 use bevy::prelude::*;
 
 /// Move the active piece horizontally to follow the mouse cursor.
@@ -9,11 +10,12 @@ pub fn input_system(
     keyboard: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform)>,
-    mut active_query: Query<(Entity, &mut Transform, &mut Grain), With<ActivePiece>>,
+    mut active_query: Query<(Entity, &mut Transform, &mut Grain, &ActivePiece)>,
     mut board: ResMut<BoardGrid>,
     mut board_dirty: ResMut<BoardDirty>,
     mut commands: Commands,
     mut game_status: ResMut<GameStatus>,
+    mut piece_queue: ResMut<NextPieceQueue>,
 ) {
     if game_status.is_game_over || active_query.is_empty() {
         return;
@@ -31,7 +33,7 @@ pub fn input_system(
 
                     let pieces: Vec<(Entity, i32, i32)> = active_query
                         .iter()
-                        .map(|(e, t, _)| {
+                        .map(|(e, t, _, _)| {
                             let (col, row) = BoardGrid::world_to_grid_unclamped(
                                 t.translation.x,
                                 t.translation.y,
@@ -70,7 +72,7 @@ pub fn input_system(
                             });
 
                             if can_move {
-                                for (_, mut transform, _) in &mut active_query {
+                                for (_, mut transform, _, _) in &mut active_query {
                                     transform.translation.x += delta as f32 * GRAIN_SIZE;
                                 }
                             }
@@ -85,12 +87,14 @@ pub fn input_system(
     if keyboard.just_pressed(KeyCode::Space) {
         let pieces: Vec<(Entity, i32, i32)> = active_query
             .iter()
-            .map(|(e, t, _)| {
+            .map(|(e, t, _, _)| {
                 let (col, row) =
                     BoardGrid::world_to_grid_unclamped(t.translation.x, t.translation.y);
                 (e, col, row)
             })
             .collect();
+        // All grains share the same slot; read it once before the mutable loop.
+        let active_slot = active_query.iter().next().map(|(_, _, _, ap)| ap.slot);
 
         // Find max drop distance
         let mut drop_rows = 0i32;
@@ -114,7 +118,7 @@ pub fn input_system(
         // Apply drop and lock
         let mut overflowed_top = false;
         let mut locked_any = false;
-        for (entity, mut transform, mut grain) in &mut active_query {
+        for (entity, mut transform, mut grain, _) in &mut active_query {
             transform.translation.y -= drop_rows as f32 * GRAIN_SIZE;
             let (col, row) = BoardGrid::world_to_grid_unclamped(
                 transform.translation.x,
@@ -141,6 +145,17 @@ pub fn input_system(
         }
         if locked_any {
             board_dirty.0 = true;
+            // Piece was placed: now consume its queue slot and replenish.
+            if let Some(slot) = active_slot {
+                if slot < piece_queue.pieces.len() {
+                    piece_queue.pieces.remove(slot);
+                    let mut rng = rand::rng();
+                    piece_queue.pieces.push_back((
+                        TetrominoShape::random(&mut rng),
+                        GrainColor::random(&mut rng),
+                    ));
+                }
+            }
         }
         if overflowed_top {
             game_status.is_game_over = true;

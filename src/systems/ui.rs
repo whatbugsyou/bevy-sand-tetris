@@ -179,16 +179,18 @@ pub fn game_over_ui(
 }
 
 /// Handles hover/press interactions on candidate piece slots.
-/// On press: spawns the selected piece as the active piece and replenishes the queue.
+/// Clicking a slot always previews that piece as the active piece.
+/// The queue is NOT modified here — slots are only consumed on hard-drop (Space).
+/// If another piece is already active (not yet placed), it is simply despawned.
 pub fn preview_interaction_system(
     mut commands: Commands,
     mut interaction_query: Query<
         (&PreviewSlotButton, &Interaction, &mut BackgroundColor),
         Changed<Interaction>,
     >,
-    mut piece_queue: ResMut<NextPieceQueue>,
+    piece_queue: Res<NextPieceQueue>,
     board: Res<BoardGrid>,
-    active_query: Query<(), With<ActivePiece>>,
+    active_query: Query<Entity, With<ActivePiece>>,
     mut game_status: ResMut<GameStatus>,
     clear_effect: Res<ClearEffect>,
 ) {
@@ -196,68 +198,22 @@ pub fn preview_interaction_system(
         match *interaction {
             Interaction::Pressed => {
                 bg.0 = SLOT_PRESSED_COLOR;
-                // Spawn only when no active piece, game is running, and no clear in progress
-                if !game_status.is_game_over
-                    && active_query.is_empty()
-                    && clear_effect.pending.is_none()
-                {
+                if !game_status.is_game_over && clear_effect.pending.is_none() {
                     let slot = slot_btn.slot;
                     if let Some(&(shape, color)) = piece_queue.pieces.get(slot) {
-                        // Remove selected piece and replenish queue
-                        piece_queue.pieces.remove(slot);
-                        let mut rng = rand::rng();
-                        piece_queue.pieces.push_back((
-                            TetrominoShape::random(&mut rng),
-                            GrainColor::random(&mut rng),
-                        ));
-
-                        // Compute centered anchor column
-                        let offsets = shape.offsets();
-                        let min_offset_x =
-                            offsets.iter().map(|o| o.x).min().unwrap_or(0);
-                        let max_offset_x =
-                            offsets.iter().map(|o| o.x).max().unwrap_or(0);
-                        let min_anchor = -min_offset_x;
-                        let max_anchor = (BOARD_WIDTH - 1) - max_offset_x;
-                        let anchor_col = (min_anchor + max_anchor) / 2;
-
-                        // Check if spawn area is clear
-                        let spawn_blocked = offsets.iter().any(|offset| {
-                            let col = anchor_col + offset.x;
-                            let x = col_to_world_x(col);
-                            let y = SPAWN_Y + offset.y as f32 * GRAIN_SIZE;
-                            let (_, row) = BoardGrid::world_to_grid_unclamped(x, y);
-                            !board.is_free(col, row)
-                        });
-
-                        if spawn_blocked {
-                            game_status.is_game_over = true;
-                            info!(
-                                "Game Over! Spawn area blocked. Final score: {}",
-                                game_status.score
-                            );
-                        } else {
-                            for offset in offsets {
-                                let col = anchor_col + offset.x;
-                                let x = col_to_world_x(col);
-                                let y = SPAWN_Y + offset.y as f32 * GRAIN_SIZE;
-                                commands.spawn((
-                                    ActivePiece,
-                                    Grain {
-                                        color,
-                                        settled: false,
-                                        stable: false,
-                                    },
-                                    Sprite::from_color(
-                                        color.to_bevy_color(),
-                                        Vec2::splat(GRAIN_SIZE),
-                                    ),
-                                    Transform::from_xyz(x, y, 0.0),
-                                    GlobalTransform::default(),
-                                ));
-                            }
-                            info!("Player selected {:?} with color {:?}", shape, color);
+                        // Despawn any existing active piece — it was never placed,
+                        // so the queue slot it came from remains intact.
+                        for entity in &active_query {
+                            commands.entity(entity).despawn();
                         }
+                        spawn_active_piece(
+                            &mut commands,
+                            &board,
+                            &mut game_status,
+                            shape,
+                            color,
+                            slot,
+                        );
                     }
                 }
             }
@@ -268,6 +224,59 @@ pub fn preview_interaction_system(
                 bg.0 = SLOT_NORMAL_COLOR;
             }
         }
+    }
+}
+
+/// Spawns a new active piece centred at the top of the board.
+/// Sets `game_status.is_game_over` if the spawn area is already occupied.
+/// `slot` is the queue index the piece came from; consumed on hard-drop.
+fn spawn_active_piece(
+    commands: &mut Commands,
+    board: &BoardGrid,
+    game_status: &mut GameStatus,
+    shape: TetrominoShape,
+    color: GrainColor,
+    slot: usize,
+) {
+    let offsets = shape.offsets();
+    let min_offset_x = offsets.iter().map(|o| o.x).min().unwrap_or(0);
+    let max_offset_x = offsets.iter().map(|o| o.x).max().unwrap_or(0);
+    let min_anchor = -min_offset_x;
+    let max_anchor = (BOARD_WIDTH - 1) - max_offset_x;
+    let anchor_col = (min_anchor + max_anchor) / 2;
+
+    let spawn_blocked = offsets.iter().any(|offset| {
+        let col = anchor_col + offset.x;
+        let x = col_to_world_x(col);
+        let y = SPAWN_Y + offset.y as f32 * GRAIN_SIZE;
+        let (_, row) = BoardGrid::world_to_grid_unclamped(x, y);
+        !board.is_free(col, row)
+    });
+
+    if spawn_blocked {
+        game_status.is_game_over = true;
+        info!(
+            "Game Over! Spawn area blocked. Final score: {}",
+            game_status.score
+        );
+    } else {
+        for offset in offsets {
+            let col = anchor_col + offset.x;
+            let x = col_to_world_x(col);
+            let y = SPAWN_Y + offset.y as f32 * GRAIN_SIZE;
+            commands.spawn((
+                ActivePiece { slot },
+                Grain {
+                    color,
+                    settled: false,
+                    stable: false,
+                },
+                Sprite::from_color(color.to_bevy_color(), Vec2::splat(GRAIN_SIZE)),
+                Transform::from_xyz(x, y, 0.0),
+                GlobalTransform::default(),
+            ));
+        }
+        info!("Spawned {:?} with color {:?}", shape, color);
     }
 }
 
