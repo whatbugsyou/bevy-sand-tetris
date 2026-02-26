@@ -1,6 +1,6 @@
-use bevy::prelude::*;
 use crate::constants::*;
 use crate::resources::{BoardGrid, ClearEffect, GameStatus};
+use bevy::prelude::*;
 
 pub fn game_over_check_system(
     mut game_status: ResMut<GameStatus>,
@@ -13,9 +13,7 @@ pub fn game_over_check_system(
 
     // Check top row (BOARD_HEIGHT - 1) for any settled grain
     let top_row = (BOARD_HEIGHT - 1) as usize;
-    let reached_top = board.cells[top_row]
-        .iter()
-        .any(|cell| cell.is_some());
+    let reached_top = board.cells[top_row].iter().any(|cell| cell.is_some());
 
     if reached_top {
         game_status.is_game_over = true;

@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use crate::resources::GameStatus;
+use bevy::prelude::*;
 
 #[derive(Component)]
 pub struct ScoreText;
@@ -26,10 +26,7 @@ pub fn setup_ui(mut commands: Commands) {
     ));
 }
 
-pub fn update_score_ui(
-    game_status: Res<GameStatus>,
-    mut query: Query<&mut Text, With<ScoreText>>,
-) {
+pub fn update_score_ui(game_status: Res<GameStatus>, mut query: Query<&mut Text, With<ScoreText>>) {
     if game_status.is_changed() {
         for mut text in &mut query {
             **text = format!("Score: {}", game_status.score);

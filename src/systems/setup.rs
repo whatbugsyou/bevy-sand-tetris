@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use crate::constants::*;
+use bevy::prelude::*;
 
 pub fn setup_scene(mut commands: Commands) {
     commands.spawn(Camera2d);
@@ -10,19 +10,36 @@ pub fn setup_scene(mut commands: Commands) {
 
     // Floor
     commands.spawn((
-        Sprite::from_color(Color::srgb(0.35, 0.35, 0.40), Vec2::new(board_width + GRAIN_SIZE, 4.0)),
+        Sprite::from_color(
+            Color::srgb(0.35, 0.35, 0.40),
+            Vec2::new(board_width + GRAIN_SIZE, 4.0),
+        ),
         Transform::from_xyz(0.0, FLOOR_Y - GRAIN_SIZE * 0.5, -1.0),
     ));
 
     // Left wall
     commands.spawn((
-        Sprite::from_color(Color::srgb(0.30, 0.30, 0.35), Vec2::new(4.0, board_height + GRAIN_SIZE)),
-        Transform::from_xyz(-half_w - GRAIN_SIZE * 0.5, FLOOR_Y + board_height * 0.5, -1.0),
+        Sprite::from_color(
+            Color::srgb(0.30, 0.30, 0.35),
+            Vec2::new(4.0, board_height + GRAIN_SIZE),
+        ),
+        Transform::from_xyz(
+            -half_w - GRAIN_SIZE * 0.5,
+            FLOOR_Y + board_height * 0.5,
+            -1.0,
+        ),
     ));
 
     // Right wall
     commands.spawn((
-        Sprite::from_color(Color::srgb(0.30, 0.30, 0.35), Vec2::new(4.0, board_height + GRAIN_SIZE)),
-        Transform::from_xyz(half_w + GRAIN_SIZE * 0.5, FLOOR_Y + board_height * 0.5, -1.0),
+        Sprite::from_color(
+            Color::srgb(0.30, 0.30, 0.35),
+            Vec2::new(4.0, board_height + GRAIN_SIZE),
+        ),
+        Transform::from_xyz(
+            half_w + GRAIN_SIZE * 0.5,
+            FLOOR_Y + board_height * 0.5,
+            -1.0,
+        ),
     ));
 }

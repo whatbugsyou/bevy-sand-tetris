@@ -1,6 +1,6 @@
+use crate::constants::PIECE_SUBDIVISION;
 use bevy::prelude::*;
 use rand::{Rng, RngExt};
-use crate::constants::PIECE_SUBDIVISION;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GrainColor {
@@ -63,19 +63,53 @@ impl TetrominoShape {
 
     fn mino_offsets(self) -> [IVec2; 4] {
         match self {
-            TetrominoShape::I => [IVec2::new(-1, 0), IVec2::new(0, 0), IVec2::new(1, 0), IVec2::new(2, 0)],
-            TetrominoShape::O => [IVec2::new(0, 0), IVec2::new(1, 0), IVec2::new(0, 1), IVec2::new(1, 1)],
-            TetrominoShape::T => [IVec2::new(-1, 0), IVec2::new(0, 0), IVec2::new(1, 0), IVec2::new(0, 1)],
-            TetrominoShape::S => [IVec2::new(0, 0), IVec2::new(1, 0), IVec2::new(-1, 1), IVec2::new(0, 1)],
-            TetrominoShape::Z => [IVec2::new(-1, 0), IVec2::new(0, 0), IVec2::new(0, 1), IVec2::new(1, 1)],
-            TetrominoShape::J => [IVec2::new(-1, 0), IVec2::new(0, 0), IVec2::new(1, 0), IVec2::new(-1, 1)],
-            TetrominoShape::L => [IVec2::new(-1, 0), IVec2::new(0, 0), IVec2::new(1, 0), IVec2::new(1, 1)],
+            TetrominoShape::I => [
+                IVec2::new(-1, 0),
+                IVec2::new(0, 0),
+                IVec2::new(1, 0),
+                IVec2::new(2, 0),
+            ],
+            TetrominoShape::O => [
+                IVec2::new(0, 0),
+                IVec2::new(1, 0),
+                IVec2::new(0, 1),
+                IVec2::new(1, 1),
+            ],
+            TetrominoShape::T => [
+                IVec2::new(-1, 0),
+                IVec2::new(0, 0),
+                IVec2::new(1, 0),
+                IVec2::new(0, 1),
+            ],
+            TetrominoShape::S => [
+                IVec2::new(0, 0),
+                IVec2::new(1, 0),
+                IVec2::new(-1, 1),
+                IVec2::new(0, 1),
+            ],
+            TetrominoShape::Z => [
+                IVec2::new(-1, 0),
+                IVec2::new(0, 0),
+                IVec2::new(0, 1),
+                IVec2::new(1, 1),
+            ],
+            TetrominoShape::J => [
+                IVec2::new(-1, 0),
+                IVec2::new(0, 0),
+                IVec2::new(1, 0),
+                IVec2::new(-1, 1),
+            ],
+            TetrominoShape::L => [
+                IVec2::new(-1, 0),
+                IVec2::new(0, 0),
+                IVec2::new(1, 0),
+                IVec2::new(1, 1),
+            ],
         }
     }
 
     pub fn offsets(self) -> Vec<IVec2> {
-        let mut result =
-            Vec::with_capacity((4 * PIECE_SUBDIVISION * PIECE_SUBDIVISION) as usize);
+        let mut result = Vec::with_capacity((4 * PIECE_SUBDIVISION * PIECE_SUBDIVISION) as usize);
         for mino in self.mino_offsets() {
             let base_x = mino.x * PIECE_SUBDIVISION;
             let base_y = mino.y * PIECE_SUBDIVISION;
