@@ -61,7 +61,7 @@ impl TetrominoShape {
         Self::ALL[rng.random_range(0..Self::ALL.len())]
     }
 
-    fn mino_offsets(self) -> [IVec2; 4] {
+    pub fn mino_offsets(self) -> [IVec2; 4] {
         match self {
             TetrominoShape::I => [
                 IVec2::new(-1, 0),

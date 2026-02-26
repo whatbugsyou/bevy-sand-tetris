@@ -1,6 +1,6 @@
 use crate::components::{ActivePiece, Grain};
 use crate::constants::*;
-use crate::resources::{BoardGrid, GameStatus, SpawnClock};
+use crate::resources::{BoardGrid, GameStatus, NextPieceQueue, SpawnClock};
 use crate::types::{GrainColor, TetrominoShape};
 use bevy::prelude::*;
 use rand::RngExt;
@@ -14,6 +14,7 @@ pub fn spawn_piece_system(
     mut commands: Commands,
     mut spawn_clock: ResMut<SpawnClock>,
     mut game_status: ResMut<GameStatus>,
+    mut piece_queue: ResMut<NextPieceQueue>,
     board: Res<BoardGrid>,
     time: Res<Time>,
     active_query: Query<(), With<ActivePiece>>,
@@ -27,8 +28,18 @@ pub fn spawn_piece_system(
     }
 
     let mut rng = rand::rng();
-    let shape = TetrominoShape::random(&mut rng);
-    let color = GrainColor::random(&mut rng);
+    // Fill the queue up to 2 entries if needed
+    while piece_queue.pieces.len() < 2 {
+        piece_queue
+            .pieces
+            .push_back((TetrominoShape::random(&mut rng), GrainColor::random(&mut rng)));
+    }
+    // Take the next piece from the front of the queue
+    let (shape, color) = piece_queue.pieces.pop_front().unwrap();
+    // Replenish queue back to 2
+    piece_queue
+        .pieces
+        .push_back((TetrominoShape::random(&mut rng), GrainColor::random(&mut rng)));
     let offsets = shape.offsets();
     let min_offset_x = offsets.iter().map(|o| o.x).min().unwrap_or(0);
     let max_offset_x = offsets.iter().map(|o| o.x).max().unwrap_or(0);
