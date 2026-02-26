@@ -1,9 +1,9 @@
-use bevy::prelude::*;
-use rand::RngExt;
 use crate::components::{ActivePiece, Grain};
 use crate::constants::*;
 use crate::resources::{BoardGrid, GameStatus, SpawnClock};
 use crate::types::{GrainColor, TetrominoShape};
+use bevy::prelude::*;
+use rand::RngExt;
 
 pub fn col_to_world_x(col: i32) -> f32 {
     let left_col_x = -((BOARD_WIDTH - 1) as f32) * 0.5 * GRAIN_SIZE;
@@ -45,7 +45,10 @@ pub fn spawn_piece_system(
 
     if spawn_blocked {
         game_status.is_game_over = true;
-        info!("Game Over! Spawn area blocked. Final score: {}", game_status.score);
+        info!(
+            "Game Over! Spawn area blocked. Final score: {}",
+            game_status.score
+        );
         return;
     }
 
@@ -55,8 +58,12 @@ pub fn spawn_piece_system(
         let y = SPAWN_Y + offset.y as f32 * GRAIN_SIZE;
         commands.spawn((
             ActivePiece,
-            Grain { color, settled: false },
-            Sprite::from_color(color.to_bevy_color(), Vec2::splat(GRAIN_SIZE - 1.5)),
+            Grain {
+                color,
+                settled: false,
+                stable: false,
+            },
+            Sprite::from_color(color.to_bevy_color(), Vec2::splat(GRAIN_SIZE)),
             Transform::from_xyz(x, y, 0.0),
             GlobalTransform::default(),
         ));
