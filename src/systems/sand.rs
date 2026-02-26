@@ -1,14 +1,18 @@
-use bevy::prelude::*;
-use rand::RngExt;
 use crate::components::{ActivePiece, ClearingGrain, Grain};
 use crate::constants::*;
-use crate::resources::{BoardGrid, ClearEffect, GameStatus, SandTimer};
+use crate::resources::{BoardDirty, BoardGrid, ClearEffect, GameStatus, SandTimer};
+use bevy::prelude::*;
+use rand::RngExt;
 
 /// Simulate sand physics for settled grains: fall down or slide diagonally.
 /// Scan from bottom to top for stability.
 pub fn sand_physics_system(
     mut board: ResMut<BoardGrid>,
-    mut grain_query: Query<(&mut Transform, &Grain), (Without<ActivePiece>, Without<ClearingGrain>)>,
+    mut grain_query: Query<
+        (&mut Transform, &mut Grain),
+        (Without<ActivePiece>, Without<ClearingGrain>),
+    >,
+    mut board_dirty: ResMut<BoardDirty>,
     mut sand_timer: ResMut<SandTimer>,
     time: Res<Time>,
     clear_effect: Res<ClearEffect>,
@@ -22,6 +26,7 @@ pub fn sand_physics_system(
     }
 
     let mut rng = rand::rng();
+    let mut moved_any = false;
 
     // Process rows from bottom (row 0) to top
     for row in 0..(BOARD_HEIGHT as usize) {
@@ -31,9 +36,9 @@ pub fn sand_physics_system(
                 None => continue,
             };
 
-            // Only process settled grains
+            // Only process settled, unstable grains
             if let Ok((_, grain)) = grain_query.get(entity) {
-                if !grain.settled {
+                if !grain.settled || grain.stable {
                     continue;
                 }
             } else {
@@ -46,6 +51,9 @@ pub fn sand_physics_system(
             // Try to fall straight down
             if r > 0 && board.is_free(c, r - 1) {
                 move_grain(&mut board, &mut grain_query, entity, col, row, col, row - 1);
+                moved_any = true;
+                // Mark neighbors above as potentially unstable
+                mark_neighbors_unstable(&board, &mut grain_query, col, row);
                 continue;
             }
 
@@ -67,6 +75,8 @@ pub fn sand_physics_system(
                         (c + first_dc) as usize,
                         row - 1,
                     );
+                    moved_any = true;
+                    mark_neighbors_unstable(&board, &mut grain_query, col, row);
                     continue;
                 }
                 if board.is_free(c + second_dc, r - 1) {
@@ -79,16 +89,29 @@ pub fn sand_physics_system(
                         (c + second_dc) as usize,
                         row - 1,
                     );
+                    moved_any = true;
+                    mark_neighbors_unstable(&board, &mut grain_query, col, row);
                     continue;
                 }
             }
+
+            // If we reach here, grain cannot move - mark as stable
+            if let Ok((_, mut grain)) = grain_query.get_mut(entity) {
+                grain.stable = true;
+            }
         }
+    }
+    if moved_any {
+        board_dirty.0 = true;
     }
 }
 
 fn move_grain(
     board: &mut BoardGrid,
-    grain_query: &mut Query<(&mut Transform, &Grain), (Without<ActivePiece>, Without<ClearingGrain>)>,
+    grain_query: &mut Query<
+        (&mut Transform, &mut Grain),
+        (Without<ActivePiece>, Without<ClearingGrain>),
+    >,
     entity: Entity,
     from_col: usize,
     from_row: usize,
@@ -101,5 +124,35 @@ fn move_grain(
         let (wx, wy) = BoardGrid::grid_to_world(to_col, to_row);
         transform.translation.x = wx;
         transform.translation.y = wy;
+    }
+}
+
+/// Mark grains in the surrounding area as unstable when a grain moves
+fn mark_neighbors_unstable(
+    board: &BoardGrid,
+    grain_query: &mut Query<
+        (&mut Transform, &mut Grain),
+        (Without<ActivePiece>, Without<ClearingGrain>),
+    >,
+    col: usize,
+    row: usize,
+) {
+    // Check grains above and diagonally above
+    let check_positions = [
+        (col as i32, row as i32 + 1),     // directly above
+        (col as i32 - 1, row as i32 + 1), // upper-left
+        (col as i32 + 1, row as i32 + 1), // upper-right
+    ];
+
+    for (c, r) in check_positions {
+        if c >= 0 && c < BOARD_WIDTH && r >= 0 && r < BOARD_HEIGHT {
+            if let Some(entity) = board.cells[r as usize][c as usize] {
+                if let Ok((_, mut grain)) = grain_query.get_mut(entity) {
+                    if grain.settled {
+                        grain.stable = false;
+                    }
+                }
+            }
+        }
     }
 }

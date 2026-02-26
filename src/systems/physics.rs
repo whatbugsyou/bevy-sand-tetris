@@ -1,13 +1,14 @@
-use bevy::prelude::*;
 use crate::components::{ActivePiece, Grain};
 use crate::constants::*;
-use crate::resources::{BoardGrid, FallTimer, GameStatus};
+use crate::resources::{BoardDirty, BoardGrid, FallTimer, GameStatus};
+use bevy::prelude::*;
 
 /// Active piece falls as a group, one grid row per tick.
 pub fn falling_system(
     mut commands: Commands,
     mut active_query: Query<(Entity, &mut Transform, &mut Grain), With<ActivePiece>>,
     mut board: ResMut<BoardGrid>,
+    mut board_dirty: ResMut<BoardDirty>,
     mut fall_timer: ResMut<FallTimer>,
     time: Res<Time>,
     mut game_status: ResMut<GameStatus>,
@@ -41,7 +42,9 @@ pub fn falling_system(
         }
         // OK if the target cell is free or occupied by another active piece grain
         board.is_free(col, target_row)
-            || positions.iter().any(|&(_, c2, r2)| c2 == col && r2 == target_row)
+            || positions
+                .iter()
+                .any(|&(_, c2, r2)| c2 == col && r2 == target_row)
     });
 
     if can_fall {
@@ -52,9 +55,12 @@ pub fn falling_system(
     } else {
         // Lock: settle all active grains into the board
         let mut overflowed_top = false;
+        let mut locked_any = false;
         for (entity, mut transform, mut grain) in &mut active_query {
-            let (col, row) =
-                BoardGrid::world_to_grid_unclamped(transform.translation.x, transform.translation.y);
+            let (col, row) = BoardGrid::world_to_grid_unclamped(
+                transform.translation.x,
+                transform.translation.y,
+            );
             if col < 0 || col >= BOARD_WIDTH || row < 0 {
                 overflowed_top = true;
                 commands.entity(entity).despawn();
@@ -71,12 +77,20 @@ pub fn falling_system(
             transform.translation.x = wx;
             transform.translation.y = wy;
             grain.settled = true;
+            grain.stable = false; // newly settled grains need sand physics processing
             board.set(col as usize, row as usize, entity);
+            locked_any = true;
             commands.entity(entity).remove::<ActivePiece>();
+        }
+        if locked_any {
+            board_dirty.0 = true;
         }
         if overflowed_top {
             game_status.is_game_over = true;
-            info!("Game Over! Piece locked above top. Final score: {}", game_status.score);
+            info!(
+                "Game Over! Piece locked above top. Final score: {}",
+                game_status.score
+            );
         }
     }
 }

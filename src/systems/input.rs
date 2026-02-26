@@ -1,9 +1,9 @@
-use bevy::prelude::*;
 use crate::components::{ActivePiece, Grain};
 use crate::constants::*;
-use crate::resources::{BoardGrid, FallTimer, GameStatus};
-const HORIZONTAL_HOLD_INITIAL_DELAY: f32 = 0.16;
-const HORIZONTAL_HOLD_REPEAT_INTERVAL: f32 = 0.05;
+use crate::resources::{BoardDirty, BoardGrid, FallTimer, GameStatus};
+use bevy::prelude::*;
+const HORIZONTAL_HOLD_INITIAL_DELAY: f32 = 0.01;
+const HORIZONTAL_HOLD_REPEAT_INTERVAL: f32 = 0.01;
 
 #[derive(Default)]
 pub(crate) struct HorizontalHoldState {
@@ -16,6 +16,7 @@ pub fn input_system(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut active_query: Query<(Entity, &mut Transform, &mut Grain), With<ActivePiece>>,
     mut board: ResMut<BoardGrid>,
+    mut board_dirty: ResMut<BoardDirty>,
     mut fall_timer: ResMut<FallTimer>,
     time: Res<Time>,
     mut horizontal_hold: Local<HorizontalHoldState>,
@@ -66,8 +67,7 @@ pub fn input_system(
                 .collect();
             let can_move = pieces.iter().all(|&(_, col, row)| {
                 let nc = col + desired_dir;
-                board.is_free(nc, row)
-                    || pieces.iter().any(|&(_, c2, r2)| c2 == nc && r2 == row)
+                board.is_free(nc, row) || pieces.iter().any(|&(_, c2, r2)| c2 == nc && r2 == row)
             });
 
             if can_move {
@@ -83,7 +83,8 @@ pub fn input_system(
         let pieces: Vec<(Entity, i32, i32)> = active_query
             .iter()
             .map(|(e, t, _)| {
-                let (col, row) = BoardGrid::world_to_grid_unclamped(t.translation.x, t.translation.y);
+                let (col, row) =
+                    BoardGrid::world_to_grid_unclamped(t.translation.x, t.translation.y);
                 (e, col, row)
             })
             .collect();
@@ -106,8 +107,7 @@ pub fn input_system(
                 .collect();
 
             let can_rotate = rotated.iter().all(|&(_, nc, nr)| {
-                board.is_free(nc, nr)
-                    || pieces.iter().any(|&(_, c2, r2)| c2 == nc && r2 == nr)
+                board.is_free(nc, nr) || pieces.iter().any(|&(_, c2, r2)| c2 == nc && r2 == nr)
             });
 
             if can_rotate {
@@ -124,9 +124,13 @@ pub fn input_system(
 
     // --- Soft drop (Down arrow held) ---
     if keyboard.pressed(KeyCode::ArrowDown) {
-        fall_timer.0.set_duration(std::time::Duration::from_secs_f32(0.05));
+        fall_timer
+            .0
+            .set_duration(std::time::Duration::from_secs_f32(0.05));
     } else {
-        fall_timer.0.set_duration(std::time::Duration::from_secs_f32(FALL_INTERVAL));
+        fall_timer
+            .0
+            .set_duration(std::time::Duration::from_secs_f32(FALL_INTERVAL));
     }
 
     // --- Hard drop (Space) ---
@@ -135,7 +139,8 @@ pub fn input_system(
         let pieces: Vec<(Entity, i32, i32)> = active_query
             .iter()
             .map(|(e, t, _)| {
-                let (col, row) = BoardGrid::world_to_grid_unclamped(t.translation.x, t.translation.y);
+                let (col, row) =
+                    BoardGrid::world_to_grid_unclamped(t.translation.x, t.translation.y);
                 (e, col, row)
             })
             .collect();
@@ -149,8 +154,7 @@ pub fn input_system(
                 if nr < 0 {
                     return false;
                 }
-                board.is_free(col, nr)
-                    || pieces.iter().any(|&(_, c2, r2)| c2 == col && r2 == nr)
+                board.is_free(col, nr) || pieces.iter().any(|&(_, c2, r2)| c2 == col && r2 == nr)
             });
             if can_drop {
                 drop_rows = next_drop;
@@ -161,10 +165,13 @@ pub fn input_system(
 
         // Apply drop and lock
         let mut overflowed_top = false;
+        let mut locked_any = false;
         for (entity, mut transform, mut grain) in &mut active_query {
             transform.translation.y -= drop_rows as f32 * GRAIN_SIZE;
-            let (col, row) =
-                BoardGrid::world_to_grid_unclamped(transform.translation.x, transform.translation.y);
+            let (col, row) = BoardGrid::world_to_grid_unclamped(
+                transform.translation.x,
+                transform.translation.y,
+            );
             if col < 0 || col >= BOARD_WIDTH || row < 0 {
                 overflowed_top = true;
                 commands.entity(entity).despawn();
@@ -179,8 +186,13 @@ pub fn input_system(
             transform.translation.x = wx;
             transform.translation.y = wy;
             grain.settled = true;
+            grain.stable = false;
             board.set(col as usize, row as usize, entity);
+            locked_any = true;
             commands.entity(entity).remove::<ActivePiece>();
+        }
+        if locked_any {
+            board_dirty.0 = true;
         }
         if overflowed_top {
             game_status.is_game_over = true;

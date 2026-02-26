@@ -1,8 +1,10 @@
-use std::collections::HashSet;
-use bevy::prelude::*;
 use crate::components::{ActivePiece, ClearingGrain, Grain};
 use crate::constants::*;
-use crate::resources::{BoardDirty, BoardGrid, ClearEffect, ClearScratch, GameStatus, PendingClear};
+use crate::resources::{
+    BoardDirty, BoardGrid, ClearEffect, ClearScratch, GameStatus, PendingClear,
+};
+use bevy::prelude::*;
+use std::collections::HashSet;
 
 const CLEAR_FLASH_DURATION: f32 = 0.6;
 const CLEAR_FLASH_INTERVAL: f32 = 0.2;
@@ -36,13 +38,12 @@ pub fn clear_system(
         pending.elapsed += time.delta_secs();
         let flash_on = ((pending.elapsed / pending.flash_interval).floor() as i32) % 2 == 0;
         for &(_, _, entity) in &pending.targets {
-            let grain_color = grain_query.get(entity).map(|g| g.color.to_bevy_color()).unwrap_or(Color::WHITE);
+            let grain_color = grain_query
+                .get(entity)
+                .map(|g| g.color.to_bevy_color())
+                .unwrap_or(Color::WHITE);
             if let Ok(mut sprite) = sprite_query.get_mut(entity) {
-                sprite.color = if flash_on {
-                    Color::WHITE
-                } else {
-                    grain_color
-                };
+                sprite.color = if flash_on { Color::WHITE } else { grain_color };
             }
         }
         if pending.elapsed >= pending.duration {

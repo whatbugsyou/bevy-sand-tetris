@@ -1,5 +1,6 @@
-use bevy::prelude::*;
 use crate::constants::*;
+use bevy::prelude::*;
+use std::collections::VecDeque;
 
 #[derive(Resource, Default)]
 pub struct GameStatus {
@@ -19,6 +20,28 @@ pub struct SandTimer(pub Timer);
 #[derive(Resource, Default)]
 pub struct ClearEffect {
     pub pending: Option<PendingClear>,
+}
+#[derive(Resource, Default)]
+pub struct BoardDirty(pub bool);
+
+#[derive(Resource)]
+pub struct ClearScratch {
+    pub visited_stamp: Vec<u32>,
+    pub current_stamp: u32,
+    pub queue: VecDeque<(usize, usize)>,
+    pub component: Vec<(usize, usize)>,
+}
+
+impl Default for ClearScratch {
+    fn default() -> Self {
+        let cell_count = (BOARD_WIDTH as usize) * (BOARD_HEIGHT as usize);
+        Self {
+            visited_stamp: vec![0; cell_count],
+            current_stamp: 1,
+            queue: VecDeque::new(),
+            component: Vec::new(),
+        }
+    }
 }
 
 pub struct PendingClear {

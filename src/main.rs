@@ -7,7 +7,9 @@ mod systems;
 mod types;
 
 use constants::{FALL_INTERVAL, IPHONE14_HEIGHT, IPHONE14_WIDTH, SAND_STEP_INTERVAL};
-use resources::{BoardGrid, ClearEffect, FallTimer, GameStatus, SandTimer, SpawnClock};
+use resources::{
+    BoardDirty, BoardGrid, ClearEffect, ClearScratch, FallTimer, GameStatus, SandTimer, SpawnClock,
+};
 use systems::{
     clear::clear_system,
     game_over::game_over_check_system,
@@ -23,9 +25,17 @@ fn main() {
     App::new()
         .insert_resource(ClearColor(Color::srgb(0.05, 0.05, 0.08)))
         .insert_resource(SpawnClock(Timer::from_seconds(0.3, TimerMode::Repeating)))
-        .insert_resource(FallTimer(Timer::from_seconds(FALL_INTERVAL, TimerMode::Repeating)))
-        .insert_resource(SandTimer(Timer::from_seconds(SAND_STEP_INTERVAL, TimerMode::Repeating)))
+        .insert_resource(FallTimer(Timer::from_seconds(
+            FALL_INTERVAL,
+            TimerMode::Repeating,
+        )))
+        .insert_resource(SandTimer(Timer::from_seconds(
+            SAND_STEP_INTERVAL,
+            TimerMode::Repeating,
+        )))
         .insert_resource(ClearEffect::default())
+        .insert_resource(BoardDirty::default())
+        .insert_resource(ClearScratch::default())
         .insert_resource(GameStatus::default())
         .insert_resource(BoardGrid::default())
         .add_plugins(DefaultPlugins.set(WindowPlugin {
