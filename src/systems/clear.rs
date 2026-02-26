@@ -4,16 +4,24 @@ use crate::resources::{
     BoardDirty, BoardGrid, ClearEffect, ClearScratch, GameStatus, PendingClear,
 };
 use bevy::prelude::*;
+use rand::RngExt;
 use std::collections::HashSet;
+use std::f32::consts::TAU;
 
-/// Total time (seconds) for the stagger wave to sweep from the leftmost to rightmost column.
-const POP_STAGGER_TOTAL: f32 = 0.5;
-/// Initial upward velocity (world-space pixels/s) when a grain launches.
-const POP_INITIAL_VEL: f32 = 600.0;
+/// Maximum random delay (seconds) before a grain launches — all burst nearly simultaneously.
+const POP_RANDOM_DELAY_MAX: f32 = 0.12;
+/// Base outward velocity magnitude (px/s).
+const POP_BASE_VEL: f32 = 650.0;
+/// Random jitter added on top of base velocity (px/s).
+const POP_VEL_JITTER: f32 = 200.0;
+/// Minimum guaranteed upward velocity so grains always visibly pop up (px/s).
+const POP_MIN_UP_VEL: f32 = 300.0;
 /// Downward acceleration (world-space pixels/s²).
 const POP_GRAVITY: f32 = 1400.0;
-/// Extra time budget after the last grain launches to let it exit the screen.
-const POP_FLIGHT_DURATION: f32 = 1.5;
+/// Time budget after the last grain launches to let it fade/exit.
+const POP_FLIGHT_DURATION: f32 = 1.0;
+/// Duration of the white flash at the moment of launch.
+const FLASH_DURATION: f32 = 0.08;
 
 const CLEAR_DIRECTIONS: [(i32, i32); 8] = [
     (0, 1),
@@ -173,49 +181,111 @@ pub fn clear_system(
     }
     mark_boundary_unstable(&board, &mut grain_query, &cleared_positions);
 
-    // ---- Insert PopOutGrain with staggered launch delays (left → right) ----
-    let col_max = (BOARD_WIDTH - 1) as f32;
+    // ---- Compute centroid of cleared region ----
+    let centroid_col = targets_to_clear.iter().map(|&(c, _, _)| c as f32).sum::<f32>()
+        / targets_to_clear.len() as f32;
+    let centroid_row = targets_to_clear.iter().map(|&(_, r, _)| r as f32).sum::<f32>()
+        / targets_to_clear.len() as f32;
+    let (centroid_wx, centroid_wy) = BoardGrid::grid_to_world(
+        centroid_col as usize,
+        centroid_row as usize,
+    );
+
+    // ---- Insert PopOutGrain with shatter burst physics ----
+    let mut rng = rand::rng();
     for &(col, row, entity) in &targets_to_clear {
         let (origin_x, origin_y) = BoardGrid::grid_to_world(col, row);
-        let launch_delay = (col as f32 / col_max) * POP_STAGGER_TOTAL;
+
+        // Outward direction from centroid
+        let dx = origin_x - centroid_wx;
+        let dy = origin_y - centroid_wy;
+        let dist = (dx * dx + dy * dy).sqrt().max(1.0);
+        let dir_x = dx / dist;
+        let dir_y = dy / dist;
+
+        let speed = POP_BASE_VEL + rng.random_range(-POP_VEL_JITTER..POP_VEL_JITTER);
+        let vel_x = dir_x * speed;
+        // Always ensure a minimum upward component so grains visibly pop up
+        let vel_y = (dir_y * speed).max(0.0) + POP_MIN_UP_VEL
+            + rng.random_range(0.0..POP_VEL_JITTER);
+
+        let launch_delay = rng.random_range(0.0..POP_RANDOM_DELAY_MAX);
+        let rot_speed = rng.random_range(-25.0_f32..25.0_f32);
+        let flip_speed = rng.random_range(8.0_f32..20.0_f32);
+        let flip_phase = rng.random_range(0.0_f32..TAU);
+
+        // Store the grain's color as the base color for flash animation
+        // We'll read it in pop_out_system; use white as placeholder, overridden below
+        // We actually set it on the entity to its grain color — read from Grain component
         commands.entity(entity).insert(PopOutGrain {
             launch_delay,
             elapsed: 0.0,
             origin_x,
             origin_y,
+            vel_x,
+            vel_y,
+            rot_speed,
+            flip_speed,
+            flip_phase,
+            base_color: grain_query
+                .get(entity)
+                .map(|g| g.color.to_bevy_color())
+                .unwrap_or(Color::WHITE),
         });
     }
 
     clear_effect.pending = Some(PendingClear {
         points,
         elapsed: 0.0,
-        duration: POP_STAGGER_TOTAL + POP_FLIGHT_DURATION,
+        duration: POP_RANDOM_DELAY_MAX + POP_FLIGHT_DURATION,
     });
-    info!("Clearing {} grains (pop-out animation started)", points);
+    info!("Clearing {} grains (shatter burst started)", points);
 }
 
-/// Drive projectile motion for each `PopOutGrain` and despawn it once it exits the screen.
+/// Drive 3D-tumble projectile motion for each `PopOutGrain`.
 pub fn pop_out_system(
     mut commands: Commands,
     time: Res<Time>,
-    mut query: Query<(Entity, &mut Transform, &mut PopOutGrain)>,
+    mut query: Query<(Entity, &mut Transform, &mut Sprite, &mut PopOutGrain)>,
 ) {
-    let dt = time.delta_secs();
-    // Despawn threshold: well below the visible board
     let despawn_y = FLOOR_Y - 200.0;
 
-    for (entity, mut transform, mut pop) in query.iter_mut() {
-        pop.elapsed += dt;
+    for (entity, mut transform, mut sprite, mut pop) in query.iter_mut() {
+        pop.elapsed += time.delta_secs();
         let t = pop.elapsed - pop.launch_delay;
         if t <= 0.0 {
-            continue; // not launched yet — stay in original position
+            continue; // not launched yet
         }
-        // Projectile: y = origin_y + v0*t - 0.5*g*t²
-        let y = pop.origin_y + POP_INITIAL_VEL * t - 0.5 * POP_GRAVITY * t * t;
-        transform.translation.x = pop.origin_x;
+
+        // --- Position: per-grain horizontal + vertical velocities ---
+        let x = pop.origin_x + pop.vel_x * t;
+        let y = pop.origin_y + pop.vel_y * t - 0.5 * POP_GRAVITY * t * t;
+        transform.translation.x = x;
         transform.translation.y = y;
 
-        if y < despawn_y {
+        // --- Z-axis spin ---
+        transform.rotation = Quat::from_rotation_z(pop.rot_speed * t);
+
+        // --- Pseudo-3D tumbling with perspective depth ---
+        // cos controls X-flip (Y-axis rotation illusion),
+        // sin is 90° behind — treats it as Z depth: positive = closer → bigger.
+        let phase = pop.flip_speed * t + pop.flip_phase;
+        let depth_scale = 1.0 + 0.5 * phase.sin(); // 0.5× when far, 1.5× when close
+        transform.scale.x = phase.cos() * depth_scale;
+        transform.scale.y = depth_scale;
+
+        // --- Launch flash: lerp sprite color from white → base_color over FLASH_DURATION ---
+        let flash_t = (t / FLASH_DURATION).clamp(0.0, 1.0);
+        let base = pop.base_color.to_linear();
+        let r = 1.0 + (base.red - 1.0) * flash_t;
+        let g = 1.0 + (base.green - 1.0) * flash_t;
+        let b = 1.0 + (base.blue - 1.0) * flash_t;
+        sprite.color = Color::linear_rgba(r, g, b, 1.0);
+
+        // --- Despawn when off-screen ---
+        let half_w = IPHONE14_WIDTH * 0.5 + 50.0;
+        let top_y = IPHONE14_HEIGHT * 0.5 + 50.0;
+        if y < despawn_y || y > top_y || x < -half_w || x > half_w {
             commands.entity(entity).despawn();
         }
     }
