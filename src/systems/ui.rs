@@ -1,6 +1,13 @@
-use crate::constants::PREVIEW_AREA_HEIGHT;
-use crate::resources::{GameStatus, NextPieceQueue};
+use crate::components::{ActivePiece, Grain, PreviewSlotButton};
+use crate::constants::{NUM_CANDIDATES, PREVIEW_AREA_HEIGHT, *};
+use crate::resources::{BoardGrid, ClearEffect, GameStatus, NextPieceQueue};
+use crate::systems::spawn::col_to_world_x;
+use crate::types::{GrainColor, TetrominoShape};
 use bevy::prelude::*;
+
+const SLOT_NORMAL_COLOR: Color = Color::srgba(0.10, 0.10, 0.14, 1.0);
+const SLOT_HOVERED_COLOR: Color = Color::srgba(0.18, 0.18, 0.26, 1.0);
+const SLOT_PRESSED_COLOR: Color = Color::srgba(0.26, 0.26, 0.38, 1.0);
 
 #[derive(Component)]
 pub struct ScoreText;
@@ -19,7 +26,7 @@ pub struct PreviewCell {
     pub row: i32,
 }
 
-const CELL_SIZE: f32 = 22.0;
+const CELL_SIZE: f32 = 20.0;
 const CELL_GAP: f32 = 2.0;
 const PREVIEW_COLS: i32 = 4;
 const PREVIEW_ROWS: i32 = 2;
@@ -75,21 +82,29 @@ pub fn setup_ui(mut commands: Commands) {
                 TextColor(Color::srgba(1.0, 1.0, 1.0, 0.6)),
             ));
 
-            // Row of 2 preview slots
+            // Row of candidate slots (NUM_CANDIDATES)
             panel
                 .spawn(Node {
                     flex_direction: FlexDirection::Row,
-                    column_gap: Val::Px(16.0),
+                    column_gap: Val::Px(10.0),
                     ..default()
                 })
                 .with_children(|row| {
-                    for slot in 0..2usize {
-                        // Each slot: column of rows
-                        row.spawn(Node {
-                            flex_direction: FlexDirection::Column,
-                            row_gap: Val::Px(CELL_GAP),
-                            ..default()
-                        })
+                    for slot in 0..NUM_CANDIDATES {
+                        // Each slot is a clickable button container
+                        row.spawn((
+                            Button,
+                            PreviewSlotButton { slot },
+                            Node {
+                                flex_direction: FlexDirection::Column,
+                                row_gap: Val::Px(CELL_GAP),
+                                padding: UiRect::all(Val::Px(5.0)),
+                                border: UiRect::all(Val::Px(2.0)),
+                                ..default()
+                            },
+                            BackgroundColor(SLOT_NORMAL_COLOR),
+                            BorderColor::all(Color::srgba(0.45, 0.45, 0.60, 0.5)),
+                        ))
                         .with_children(|slot_col| {
                             for r in (0..PREVIEW_ROWS).rev() {
                                 // one grid row
@@ -160,6 +175,99 @@ pub fn game_over_ui(
                     TextLayout::new_with_justify(Justify::Center),
                 ));
             });
+    }
+}
+
+/// Handles hover/press interactions on candidate piece slots.
+/// On press: spawns the selected piece as the active piece and replenishes the queue.
+pub fn preview_interaction_system(
+    mut commands: Commands,
+    mut interaction_query: Query<
+        (&PreviewSlotButton, &Interaction, &mut BackgroundColor),
+        Changed<Interaction>,
+    >,
+    mut piece_queue: ResMut<NextPieceQueue>,
+    board: Res<BoardGrid>,
+    active_query: Query<(), With<ActivePiece>>,
+    mut game_status: ResMut<GameStatus>,
+    clear_effect: Res<ClearEffect>,
+) {
+    for (slot_btn, interaction, mut bg) in &mut interaction_query {
+        match *interaction {
+            Interaction::Pressed => {
+                bg.0 = SLOT_PRESSED_COLOR;
+                // Spawn only when no active piece, game is running, and no clear in progress
+                if !game_status.is_game_over
+                    && active_query.is_empty()
+                    && clear_effect.pending.is_none()
+                {
+                    let slot = slot_btn.slot;
+                    if let Some(&(shape, color)) = piece_queue.pieces.get(slot) {
+                        // Remove selected piece and replenish queue
+                        piece_queue.pieces.remove(slot);
+                        let mut rng = rand::rng();
+                        piece_queue.pieces.push_back((
+                            TetrominoShape::random(&mut rng),
+                            GrainColor::random(&mut rng),
+                        ));
+
+                        // Compute centered anchor column
+                        let offsets = shape.offsets();
+                        let min_offset_x =
+                            offsets.iter().map(|o| o.x).min().unwrap_or(0);
+                        let max_offset_x =
+                            offsets.iter().map(|o| o.x).max().unwrap_or(0);
+                        let min_anchor = -min_offset_x;
+                        let max_anchor = (BOARD_WIDTH - 1) - max_offset_x;
+                        let anchor_col = (min_anchor + max_anchor) / 2;
+
+                        // Check if spawn area is clear
+                        let spawn_blocked = offsets.iter().any(|offset| {
+                            let col = anchor_col + offset.x;
+                            let x = col_to_world_x(col);
+                            let y = SPAWN_Y + offset.y as f32 * GRAIN_SIZE;
+                            let (_, row) = BoardGrid::world_to_grid_unclamped(x, y);
+                            !board.is_free(col, row)
+                        });
+
+                        if spawn_blocked {
+                            game_status.is_game_over = true;
+                            info!(
+                                "Game Over! Spawn area blocked. Final score: {}",
+                                game_status.score
+                            );
+                        } else {
+                            for offset in offsets {
+                                let col = anchor_col + offset.x;
+                                let x = col_to_world_x(col);
+                                let y = SPAWN_Y + offset.y as f32 * GRAIN_SIZE;
+                                commands.spawn((
+                                    ActivePiece,
+                                    Grain {
+                                        color,
+                                        settled: false,
+                                        stable: false,
+                                    },
+                                    Sprite::from_color(
+                                        color.to_bevy_color(),
+                                        Vec2::splat(GRAIN_SIZE),
+                                    ),
+                                    Transform::from_xyz(x, y, 0.0),
+                                    GlobalTransform::default(),
+                                ));
+                            }
+                            info!("Player selected {:?} with color {:?}", shape, color);
+                        }
+                    }
+                }
+            }
+            Interaction::Hovered => {
+                bg.0 = SLOT_HOVERED_COLOR;
+            }
+            Interaction::None => {
+                bg.0 = SLOT_NORMAL_COLOR;
+            }
+        }
     }
 }
 

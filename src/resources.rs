@@ -15,12 +15,6 @@ pub struct GameStatus {
 }
 
 #[derive(Resource)]
-pub struct SpawnClock(pub Timer);
-
-#[derive(Resource)]
-pub struct FallTimer(pub Timer);
-
-#[derive(Resource)]
 pub struct SandTimer(pub Timer);
 
 #[derive(Resource, Default)]

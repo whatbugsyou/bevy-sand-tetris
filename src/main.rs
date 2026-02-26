@@ -6,32 +6,24 @@ mod resources;
 mod systems;
 mod types;
 
-use constants::{
-    FALL_INTERVAL, IPHONE14_HEIGHT, IPHONE14_WIDTH, PREVIEW_AREA_HEIGHT, SAND_STEP_INTERVAL,
-};
+use constants::{IPHONE14_HEIGHT, IPHONE14_WIDTH, PREVIEW_AREA_HEIGHT, SAND_STEP_INTERVAL};
 use resources::{
-    BoardDirty, BoardGrid, ClearEffect, ClearScratch, FallTimer, GameStatus, NextPieceQueue,
-    SandTimer, SpawnClock,
+    BoardDirty, BoardGrid, ClearEffect, ClearScratch, GameStatus, NextPieceQueue, SandTimer,
 };
 use systems::{
     clear::{clear_system, pop_out_system},
     game_over::game_over_check_system,
+    ghost::ghost_system,
     input::input_system,
-    physics::falling_system,
     sand::sand_physics_system,
     setup::setup_scene,
-    spawn::spawn_piece_system,
-    ui::{game_over_ui, setup_ui, update_preview_ui, update_score_ui},
+    spawn::init_queue_system,
+    ui::{game_over_ui, preview_interaction_system, setup_ui, update_preview_ui, update_score_ui},
 };
 
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::srgb(0.05, 0.05, 0.08)))
-        .insert_resource(SpawnClock(Timer::from_seconds(0.3, TimerMode::Repeating)))
-        .insert_resource(FallTimer(Timer::from_seconds(
-            FALL_INTERVAL,
-            TimerMode::Repeating,
-        )))
         .insert_resource(SandTimer(Timer::from_seconds(
             SAND_STEP_INTERVAL,
             TimerMode::Repeating,
@@ -54,13 +46,13 @@ fn main() {
             }),
             ..default()
         }))
-        .add_systems(Startup, (setup_scene, setup_ui))
+        .add_systems(Startup, (setup_scene, setup_ui, init_queue_system))
         .add_systems(
             Update,
             (
-                spawn_piece_system,
+                preview_interaction_system,
                 input_system,
-                falling_system,
+                ghost_system,
                 clear_system,
                 pop_out_system,
                 sand_physics_system,
