@@ -1,4 +1,4 @@
-use crate::components::{ActivePiece, ClearingGrain, Grain};
+use crate::components::{ActivePiece, Grain, PopOutGrain};
 use crate::constants::*;
 use crate::resources::{
     BoardDirty, BoardGrid, ClearEffect, ClearScratch, GameStatus, PendingClear,
@@ -6,8 +6,15 @@ use crate::resources::{
 use bevy::prelude::*;
 use std::collections::HashSet;
 
-const CLEAR_FLASH_DURATION: f32 = 0.6;
-const CLEAR_FLASH_INTERVAL: f32 = 0.2;
+/// Total time (seconds) for the stagger wave to sweep from the leftmost to rightmost column.
+const POP_STAGGER_TOTAL: f32 = 0.5;
+/// Initial upward velocity (world-space pixels/s) when a grain launches.
+const POP_INITIAL_VEL: f32 = 600.0;
+/// Downward acceleration (world-space pixels/s²).
+const POP_GRAVITY: f32 = 1400.0;
+/// Extra time budget after the last grain launches to let it exit the screen.
+const POP_FLIGHT_DURATION: f32 = 1.5;
+
 const CLEAR_DIRECTIONS: [(i32, i32); 8] = [
     (0, 1),
     (0, -1),
@@ -19,9 +26,9 @@ const CLEAR_DIRECTIONS: [(i32, i32); 8] = [
     (-1, -1),
 ];
 
-/// For each color, find connected components (8-connectivity, including diagonals) among settled grains.
-/// If a component touches both the left wall (col 0) and right wall (col BOARD_WIDTH-1),
-/// mark all grains in that component for white flashing, then eliminate after a short delay.
+/// For each color, find connected components (8-connectivity) among settled grains.
+/// If a component touches both walls, immediately remove those grains from the board,
+/// insert `PopOutGrain` with a left→right staggered launch delay, and start the pending timer.
 pub fn clear_system(
     mut commands: Commands,
     mut board: ResMut<BoardGrid>,
@@ -30,22 +37,12 @@ pub fn clear_system(
     mut clear_effect: ResMut<ClearEffect>,
     mut game_status: ResMut<GameStatus>,
     mut grain_query: Query<&mut Grain, Without<ActivePiece>>,
-    mut sprite_query: Query<&mut Sprite>,
     time: Res<Time>,
 ) {
+    // ---- Tick the pending timer and finalize when done ----
     let mut should_finalize = false;
     if let Some(pending) = clear_effect.pending.as_mut() {
         pending.elapsed += time.delta_secs();
-        let flash_on = ((pending.elapsed / pending.flash_interval).floor() as i32) % 2 == 0;
-        for &(_, _, entity) in &pending.targets {
-            let grain_color = grain_query
-                .get(entity)
-                .map(|g| g.color.to_bevy_color())
-                .unwrap_or(Color::WHITE);
-            if let Ok(mut sprite) = sprite_query.get_mut(entity) {
-                sprite.color = if flash_on { Color::WHITE } else { grain_color };
-            }
-        }
         if pending.elapsed >= pending.duration {
             should_finalize = true;
         }
@@ -53,32 +50,20 @@ pub fn clear_system(
 
     if should_finalize {
         if let Some(pending) = clear_effect.pending.take() {
-            let cleared_positions: HashSet<(usize, usize)> = pending
-                .targets
-                .iter()
-                .map(|&(col, row, _)| (col, row))
-                .collect();
-            mark_boundary_unstable(&board, &mut grain_query, &cleared_positions);
-
-            for (col, row, entity) in pending.targets {
-                board.clear_cell(col, row);
-                commands.entity(entity).despawn();
-            }
-            board_dirty.0 = true;
             game_status.score += pending.points;
-            info!(
-                "Cleared {} grains after flash. Score: {}",
-                pending.points, game_status.score
-            );
+            board_dirty.0 = true; // re-check for newly clearable components
+            info!("Clear animation done. +{} pts  total: {}", pending.points, game_status.score);
         }
         return;
     }
 
+    // ---- Gate: skip BFS while animating, game over, or board unchanged ----
     if clear_effect.pending.is_some() || game_status.is_game_over || !board_dirty.0 {
         return;
     }
     board_dirty.0 = false;
 
+    // ---- BFS ----
     let w = BOARD_WIDTH as usize;
     let h = BOARD_HEIGHT as usize;
     let cell_count = w * h;
@@ -177,20 +162,63 @@ pub fn clear_system(
     targets_to_clear.dedup_by_key(|entry| (entry.0, entry.1));
     let points = targets_to_clear.len() as u32;
 
-    for &(_, _, entity) in &targets_to_clear {
-        commands.entity(entity).insert(ClearingGrain);
-        if let Ok(mut sprite) = sprite_query.get_mut(entity) {
-            sprite.color = Color::WHITE;
-        }
+    // ---- Immediately remove from board and mark adjacent grains unstable ----
+    let cleared_positions: HashSet<(usize, usize)> = targets_to_clear
+        .iter()
+        .map(|&(col, row, _)| (col, row))
+        .collect();
+
+    for &(col, row, _) in &targets_to_clear {
+        board.clear_cell(col, row);
+    }
+    mark_boundary_unstable(&board, &mut grain_query, &cleared_positions);
+
+    // ---- Insert PopOutGrain with staggered launch delays (left → right) ----
+    let col_max = (BOARD_WIDTH - 1) as f32;
+    for &(col, row, entity) in &targets_to_clear {
+        let (origin_x, origin_y) = BoardGrid::grid_to_world(col, row);
+        let launch_delay = (col as f32 / col_max) * POP_STAGGER_TOTAL;
+        commands.entity(entity).insert(PopOutGrain {
+            launch_delay,
+            elapsed: 0.0,
+            origin_x,
+            origin_y,
+        });
     }
 
     clear_effect.pending = Some(PendingClear {
-        targets: targets_to_clear,
         points,
         elapsed: 0.0,
-        duration: CLEAR_FLASH_DURATION,
-        flash_interval: CLEAR_FLASH_INTERVAL,
+        duration: POP_STAGGER_TOTAL + POP_FLIGHT_DURATION,
     });
+    info!("Clearing {} grains (pop-out animation started)", points);
+}
+
+/// Drive projectile motion for each `PopOutGrain` and despawn it once it exits the screen.
+pub fn pop_out_system(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut query: Query<(Entity, &mut Transform, &mut PopOutGrain)>,
+) {
+    let dt = time.delta_secs();
+    // Despawn threshold: well below the visible board
+    let despawn_y = FLOOR_Y - 200.0;
+
+    for (entity, mut transform, mut pop) in query.iter_mut() {
+        pop.elapsed += dt;
+        let t = pop.elapsed - pop.launch_delay;
+        if t <= 0.0 {
+            continue; // not launched yet — stay in original position
+        }
+        // Projectile: y = origin_y + v0*t - 0.5*g*t²
+        let y = pop.origin_y + POP_INITIAL_VEL * t - 0.5 * POP_GRAVITY * t * t;
+        transform.translation.x = pop.origin_x;
+        transform.translation.y = y;
+
+        if y < despawn_y {
+            commands.entity(entity).despawn();
+        }
+    }
 }
 
 /// Mark grains adjacent to the cleared region boundary as unstable.

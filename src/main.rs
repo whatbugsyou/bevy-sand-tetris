@@ -6,19 +6,22 @@ mod resources;
 mod systems;
 mod types;
 
-use constants::{FALL_INTERVAL, IPHONE14_HEIGHT, IPHONE14_WIDTH, SAND_STEP_INTERVAL};
+use constants::{
+    FALL_INTERVAL, IPHONE14_HEIGHT, IPHONE14_WIDTH, PREVIEW_AREA_HEIGHT, SAND_STEP_INTERVAL,
+};
 use resources::{
-    BoardDirty, BoardGrid, ClearEffect, ClearScratch, FallTimer, GameStatus, SandTimer, SpawnClock,
+    BoardDirty, BoardGrid, ClearEffect, ClearScratch, FallTimer, GameStatus, NextPieceQueue,
+    SandTimer, SpawnClock,
 };
 use systems::{
-    clear::clear_system,
+    clear::{clear_system, pop_out_system},
     game_over::game_over_check_system,
     input::input_system,
     physics::falling_system,
     sand::sand_physics_system,
     setup::setup_scene,
     spawn::spawn_piece_system,
-    ui::{game_over_ui, setup_ui, update_score_ui},
+    ui::{game_over_ui, setup_ui, update_preview_ui, update_score_ui},
 };
 
 fn main() {
@@ -37,11 +40,16 @@ fn main() {
         .insert_resource(BoardDirty::default())
         .insert_resource(ClearScratch::default())
         .insert_resource(GameStatus::default())
+        .insert_resource(NextPieceQueue::default())
         .insert_resource(BoardGrid::default())
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Bevy Sand Tetris".into(),
-                resolution: (IPHONE14_WIDTH as u32, IPHONE14_HEIGHT as u32).into(),
+                resolution: (
+                    IPHONE14_WIDTH as u32,
+                    (IPHONE14_HEIGHT + PREVIEW_AREA_HEIGHT) as u32,
+                )
+                .into(),
                 ..default()
             }),
             ..default()
@@ -54,9 +62,11 @@ fn main() {
                 input_system,
                 falling_system,
                 clear_system,
+                pop_out_system,
                 sand_physics_system,
                 game_over_check_system,
                 update_score_ui,
+                update_preview_ui,
                 game_over_ui,
             )
                 .chain(),

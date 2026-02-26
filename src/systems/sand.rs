@@ -1,4 +1,4 @@
-use crate::components::{ActivePiece, ClearingGrain, Grain};
+use crate::components::{ActivePiece, Grain, PopOutGrain};
 use crate::constants::*;
 use crate::resources::{BoardDirty, BoardGrid, ClearEffect, GameStatus, SandTimer};
 use bevy::prelude::*;
@@ -10,7 +10,7 @@ pub fn sand_physics_system(
     mut board: ResMut<BoardGrid>,
     mut grain_query: Query<
         (&mut Transform, &mut Grain),
-        (Without<ActivePiece>, Without<ClearingGrain>),
+        (Without<ActivePiece>, Without<PopOutGrain>),
     >,
     mut board_dirty: ResMut<BoardDirty>,
     mut sand_timer: ResMut<SandTimer>,
@@ -110,7 +110,7 @@ fn move_grain(
     board: &mut BoardGrid,
     grain_query: &mut Query<
         (&mut Transform, &mut Grain),
-        (Without<ActivePiece>, Without<ClearingGrain>),
+        (Without<ActivePiece>, Without<PopOutGrain>),
     >,
     entity: Entity,
     from_col: usize,
@@ -132,7 +132,7 @@ fn mark_neighbors_unstable(
     board: &BoardGrid,
     grain_query: &mut Query<
         (&mut Transform, &mut Grain),
-        (Without<ActivePiece>, Without<ClearingGrain>),
+        (Without<ActivePiece>, Without<PopOutGrain>),
     >,
     col: usize,
     row: usize,

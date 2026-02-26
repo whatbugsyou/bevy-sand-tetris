@@ -1,6 +1,12 @@
 use crate::constants::*;
+use crate::types::{GrainColor, TetrominoShape};
 use bevy::prelude::*;
 use std::collections::VecDeque;
+
+#[derive(Resource, Default)]
+pub struct NextPieceQueue {
+    pub pieces: VecDeque<(TetrominoShape, GrainColor)>,
+}
 
 #[derive(Resource, Default)]
 pub struct GameStatus {
@@ -45,11 +51,9 @@ impl Default for ClearScratch {
 }
 
 pub struct PendingClear {
-    pub targets: Vec<(usize, usize, Entity)>,
     pub points: u32,
     pub elapsed: f32,
     pub duration: f32,
-    pub flash_interval: f32,
 }
 
 /// Grid-based board tracking settled grains.
