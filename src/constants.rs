@@ -2,7 +2,11 @@ pub const IPHONE14_WIDTH: f32 = 390.0;
 pub const IPHONE14_HEIGHT: f32 = 844.0;
 pub const BASE_BOARD_WIDTH: i32 = 10;
 pub const BASE_BOARD_HEIGHT: i32 = 22;
-pub const BASE_MINO_SIZE: f32 = IPHONE14_HEIGHT / BASE_BOARD_HEIGHT as f32;
+/// Visual scale of the playable board area within the main game viewport.
+/// Keep below 1.0 to shrink the board and leave more breathing room near the preview panel.
+pub const BOARD_VISUAL_SCALE: f32 = 0.88;
+pub const BASE_MINO_SIZE: f32 =
+    IPHONE14_HEIGHT * BOARD_VISUAL_SCALE / BASE_BOARD_HEIGHT as f32;
 pub const PIECE_SUBDIVISION: i32 = 8; // each original mino becomes 8x8 grains
 pub const BOARD_WIDTH: i32 = BASE_BOARD_WIDTH * PIECE_SUBDIVISION;
 pub const BOARD_HEIGHT: i32 = BASE_BOARD_HEIGHT * PIECE_SUBDIVISION;
@@ -12,7 +16,9 @@ pub const SAND_STEP_INTERVAL: f32 = 0.03;
 pub const NUM_CANDIDATES: usize = 3;
 /// Extra pixels below the board reserved for the next-piece preview UI.
 pub const PREVIEW_AREA_HEIGHT: f32 = 100.0;
-/// Shift the board up so the bottom 100px of the window is free for the UI.
+/// World-y of the centre of grain row-0.
+/// With BOARD_VISUAL_SCALE < 1.0, this naturally leaves a vertical gap above
+/// the preview panel, so the board never feels covered by the UI area.
 pub const FLOOR_Y: f32 =
-    -(BOARD_HEIGHT as f32 * GRAIN_SIZE) * 0.5 + PREVIEW_AREA_HEIGHT * 0.5;
+    -(BOARD_HEIGHT as f32 * GRAIN_SIZE) * 0.5 + PREVIEW_AREA_HEIGHT * 0.5 + GRAIN_SIZE * 0.5;
 pub const SPAWN_Y: f32 = FLOOR_Y + (BOARD_HEIGHT as f32 - 2.0) * GRAIN_SIZE;

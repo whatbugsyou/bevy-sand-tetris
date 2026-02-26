@@ -50,9 +50,8 @@ pub fn setup_ui(mut commands: Commands) {
         },
     ));
 
-    // Bottom panel: full-width solid background + "NEXT" label + 2 piece preview grids.
-    // The solid background covers the entire PREVIEW_AREA_HEIGHT strip, ensuring
-    // no world-space grain sprites are visible beneath the UI.
+    // Bottom preview area: use an outer full-width backdrop and an inner framed panel
+    // so it is visually independent from the board frame above.
     commands
         .spawn((
             Node {
@@ -61,80 +60,93 @@ pub fn setup_ui(mut commands: Commands) {
                 left: Val::Px(0.0),
                 right: Val::Px(0.0),
                 height: Val::Px(PREVIEW_AREA_HEIGHT),
-                flex_direction: FlexDirection::Column,
+                flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
-                row_gap: Val::Px(6.0),
-                border: UiRect::top(Val::Px(3.0)),
+                padding: UiRect::all(Val::Px(0.0)),
                 ..default()
             },
             BackgroundColor(Color::srgb(0.07, 0.07, 0.10)),
-            BorderColor::all(Color::srgb(0.35, 0.35, 0.40)),
         ))
-        .with_children(|panel| {
-            // "NEXT" label
-            panel.spawn((
-                Text::new("NEXT"),
-                TextFont {
-                    font_size: 18.0,
+        .with_children(|root| {
+            root.spawn((
+                Node {
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    row_gap: Val::Px(6.0),
+                    padding: UiRect::all(Val::Px(6.0)),
+                    border: UiRect::all(Val::Px(2.0)),
                     ..default()
                 },
-                TextColor(Color::srgba(1.0, 1.0, 1.0, 0.6)),
-            ));
+                BackgroundColor(Color::srgba(0.07, 0.07, 0.10, 1.0)),
+                BorderColor::all(Color::srgb(0.35, 0.35, 0.40)),
+            ))
+            .with_children(|panel| {
+                // "NEXT" label
+                panel.spawn((
+                    Text::new("NEXT"),
+                    TextFont {
+                        font_size: 18.0,
+                        ..default()
+                    },
+                    TextColor(Color::srgba(1.0, 1.0, 1.0, 0.6)),
+                ));
 
-            // Row of candidate slots (NUM_CANDIDATES)
-            panel
-                .spawn(Node {
-                    flex_direction: FlexDirection::Row,
-                    column_gap: Val::Px(10.0),
-                    ..default()
-                })
-                .with_children(|row| {
-                    for slot in 0..NUM_CANDIDATES {
-                        // Each slot is a clickable button container
-                        row.spawn((
-                            Button,
-                            PreviewSlotButton { slot },
-                            Node {
-                                flex_direction: FlexDirection::Column,
-                                row_gap: Val::Px(CELL_GAP),
-                                padding: UiRect::all(Val::Px(5.0)),
-                                border: UiRect::all(Val::Px(2.0)),
-                                ..default()
-                            },
-                            BackgroundColor(SLOT_NORMAL_COLOR),
-                            BorderColor::all(Color::srgba(0.45, 0.45, 0.60, 0.5)),
-                        ))
-                        .with_children(|slot_col| {
-                            for r in (0..PREVIEW_ROWS).rev() {
-                                // one grid row
-                                slot_col
-                                    .spawn(Node {
-                                        flex_direction: FlexDirection::Row,
-                                        column_gap: Val::Px(CELL_GAP),
-                                        ..default()
-                                    })
-                                    .with_children(|grid_row| {
-                                        for c in 0..PREVIEW_COLS {
-                                            grid_row.spawn((
-                                                PreviewCell {
-                                                    slot,
-                                                    col: c,
-                                                    row: r,
-                                                },
-                                                Node {
-                                                    width: Val::Px(CELL_SIZE),
-                                                    height: Val::Px(CELL_SIZE),
-                                                    ..default()
-                                                },
-                                                BackgroundColor(EMPTY_CELL_COLOR),
-                                            ));
-                                        }
-                                    });
-                            }
-                        });
-                    }
-                });
+                // Row of candidate slots (NUM_CANDIDATES)
+                panel
+                    .spawn(Node {
+                        flex_direction: FlexDirection::Row,
+                        column_gap: Val::Px(10.0),
+                        ..default()
+                    })
+                    .with_children(|row| {
+                        for slot in 0..NUM_CANDIDATES {
+                            // Each slot is a clickable button container
+                            row.spawn((
+                                Button,
+                                PreviewSlotButton { slot },
+                                Node {
+                                    flex_direction: FlexDirection::Column,
+                                    row_gap: Val::Px(CELL_GAP),
+                                    padding: UiRect::all(Val::Px(5.0)),
+                                    border: UiRect::all(Val::Px(2.0)),
+                                    ..default()
+                                },
+                                BackgroundColor(SLOT_NORMAL_COLOR),
+                                BorderColor::all(Color::srgba(0.45, 0.45, 0.60, 0.5)),
+                            ))
+                            .with_children(|slot_col| {
+                                for r in (0..PREVIEW_ROWS).rev() {
+                                    // one grid row
+                                    slot_col
+                                        .spawn(Node {
+                                            flex_direction: FlexDirection::Row,
+                                            column_gap: Val::Px(CELL_GAP),
+                                            ..default()
+                                        })
+                                        .with_children(|grid_row| {
+                                            for c in 0..PREVIEW_COLS {
+                                                grid_row.spawn((
+                                                    PreviewCell {
+                                                        slot,
+                                                        col: c,
+                                                        row: r,
+                                                    },
+                                                    Node {
+                                                        width: Val::Px(CELL_SIZE),
+                                                        height: Val::Px(CELL_SIZE),
+                                                        ..default()
+                                                    },
+                                                    BackgroundColor(EMPTY_CELL_COLOR),
+                                                ));
+                                            }
+                                        });
+                                }
+                            });
+                        }
+                    });
+            });
         });
 }
 
